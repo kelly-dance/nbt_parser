@@ -36,19 +36,19 @@ type value = {
 }
 type typePair<T, K extends keyof T> = {type: K, value: T[K]};
 
-function hasGzipHeader(data: ArrayLike<Number>) {
+function hasGzipHeader(data: Uint8Array) {
   return data[0] === 0x1f && data[1] === 0x8b;
 }
 
-const decodeUTF8 = (src: ArrayLike<number>) => Array.prototype.map.call(src, n => String.fromCharCode(n)).join();
+const decodeUTF8 = (src: ArrayLike<number>) => Array.prototype.map.call(src, n => String.fromCharCode(n)).join('');
 
 class nbt{
   offset: number;
   dataView: DataView;
   arrayView: Uint8Array;
-  constructor (buffer: number[]){
-    this.arrayView = new Uint8Array(buffer);
-    this.dataView = new DataView(this.arrayView);
+  constructor (buffer: Uint8Array){
+    this.arrayView = buffer;
+    this.dataView = new DataView(buffer.buffer);
     this.offset = 0;
   }
   read(type: dataTypesStrings, size: number){
@@ -123,8 +123,9 @@ class nbt{
 }
 
 function parse(data: number[]){
-  if(hasGzipHeader(data)) data = pako.inflate(data)
-  const reader = new nbt(data);
+  let arr = new Uint8Array(data);
+  if(hasGzipHeader(arr)) arr = pako.inflate(arr);
+  const reader = new nbt(arr);
   const type = reader.byte();
   if(type !== tagTypes.compound) throw new Error('Top tag should be a compoud');
   return {
