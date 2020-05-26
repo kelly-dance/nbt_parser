@@ -15,123 +15,156 @@ const tagTypes = {
   'intArray': 11,
   'longArray': 12
 };
+
+type test = string | number | test[];
+
 const tagTypeNames = Object.keys(tagTypes) as (keyof typeof tagTypes)[];
 type dataTypesStrings = 'Int8' | 'Uint8' | 'Int16' | 'Uint16' | 'Int32' | 'Uint32' | 'Float32' | 'Float64';
 type getDataTypesStrings = 'getInt8' | 'getUint8' | 'getInt16' | 'getUint16' | 'getInt32' | 'getUint32' | 'getFloat32' | 'getFloat64';
-type value = {
-  end: void;
-  byte: number;
-  ubyte: number;
-  short: number;
-  int: number;
-  float: number;
-  double: number;
-  long: [number, number];
-  byteArray: number[] | Uint8Array;
-  intArray: number[];
-  longArray: [number, number][];
-  string: string;
-  list: {type: keyof typeof tagTypes, value: value[keyof value][]};
-  compound: {[key: string]: {type: keyof typeof tagTypes, value: value[keyof value]}};
-}
-type typePair<T, K extends keyof T> = {type: K, value: T[K]};
+
+type end = void;
+type byte = number;
+type ubyte = number;
+type short = number;
+type int = number;
+type float = number;
+type double = number;
+type long = [number, number];
+type byteArray = number[] | Uint8Array;
+type intArray = number[];
+type longArray = [number, number][];
+type list = {type: keyof typeof tagTypes, value: value} | value[];
+type compound = {[key: string]: ({type: keyof typeof tagTypes, value: value}) | value};
+type value = end | byte | ubyte | short | int | float | double | long | byteArray | intArray | longArray | string | list | compound;
 
 function hasGzipHeader(data: Uint8Array) {
   return data[0] === 0x1f && data[1] === 0x8b;
 }
 
-const decodeUTF8 = (src: ArrayLike<number>) => Array.prototype.map.call(src, n => String.fromCharCode(n)).join('');
+function decodeUTF8(array: Uint8Array) {
+  const codepoints = [];
+  for (let i = 0; i < array.length; i++) {
+    if ((array[i] & 0x80) === 0) {
+      codepoints.push(array[i] & 0x7F);
+    } else if (i+1 < array.length &&
+          (array[i]   & 0xE0) === 0xC0 &&
+          (array[i+1] & 0xC0) === 0x80) {
+      codepoints.push(
+        ((array[i]   & 0x1F) << 6) |
+        ( array[i+1] & 0x3F));
+    } else if (i+2 < array.length &&
+          (array[i]   & 0xF0) === 0xE0 &&
+          (array[i+1] & 0xC0) === 0x80 &&
+          (array[i+2] & 0xC0) === 0x80) {
+      codepoints.push(
+        ((array[i]   & 0x0F) << 12) |
+        ((array[i+1] & 0x3F) <<  6) |
+        ( array[i+2] & 0x3F));
+    } else if (i+3 < array.length &&
+          (array[i]   & 0xF8) === 0xF0 &&
+          (array[i+1] & 0xC0) === 0x80 &&
+          (array[i+2] & 0xC0) === 0x80 &&
+          (array[i+3] & 0xC0) === 0x80) {
+      codepoints.push(
+        ((array[i]   & 0x07) << 18) |
+        ((array[i+1] & 0x3F) << 12) |
+        ((array[i+2] & 0x3F) <<  6) |
+        ( array[i+3] & 0x3F));
+    }
+  }
+  return String.fromCharCode(...codepoints);
+}
 
 class nbt{
   offset: number;
   dataView: DataView;
   arrayView: Uint8Array;
-  constructor (buffer: Uint8Array){
+  showTypes: boolean;
+  constructor (buffer: Uint8Array, showTypes: boolean){
     this.arrayView = buffer;
     this.dataView = new DataView(buffer.buffer);
     this.offset = 0;
+    this.showTypes = showTypes;
   }
   read(type: dataTypesStrings, size: number){
     const val = this.dataView[('get' + type) as getDataTypesStrings](this.offset);
     this.offset += size;
     return val;
   }
-  byte(): value['byte']{
+  byte(): byte{
     return this.read('Int8', 1);
   }
-  ubyte(): value['ubyte']{
+  ubyte(): ubyte{
     return this.read('Uint8', 1);
   }
-  short(): value['short']{
+  short(): short{
     return this.read('Int16', 2);
   }
-  int(): value['int']{
+  int(): int{
     return this.read('Int32', 4);
   }
-  float(): value['float']{
+  float(): float{
     return this.read('Float32', 4);
   }
-  double(): value['double']{
+  double(): double{
     return this.read('Float64', 8);
   }
-  long(): value['long']{
+  long(): long{
     return [this.int(), this.int()];
   }
-  byteArray(): value['byteArray'] {
+  byteArray(): byteArray{
     const length = this.int();
     const bytes = [];
     for (let i = 0; i < length; i++) bytes.push(this.byte());
     return bytes;
   }
-  intArray(): value['intArray'] {
+  intArray(): intArray{
     const length = this.int();
     const ints = [];
     for (let i = 0; i < length; i++)  ints.push(this.int());
     return ints;
   }
-  longArray(): value['longArray'] {
+  longArray(): longArray {
     const length = this.int();
     const longs = [];
     for (let i = 0; i < length; i++) longs.push(this.long());
     return longs;
   }
-  string(): value['string'] {
+  string(): string {
     const length = this.short();
     const slice = this.arrayView.slice(this.offset, this.offset + length);
     this.offset += length;
     return decodeUTF8(slice);
   }
-  list(): value['list'] {
+  list(): list {
     const type = this.byte();
     const length = this.int();
     const values = [];
     for (let i = 0; i < length; i++) values.push(this[tagTypeNames[type]]());
-    return { type: tagTypeNames[type], value: values };
+    return this.showTypes ? { type: tagTypeNames[type], value: values } : values;
   }
-  compound(): value['compound'] {
-    let values: value['compound'] = {};
+  compound(): compound {
+    let values: compound = {};
     while (true) {
       const type = this.byte();
       if (type === tagTypes.end) break;
       const name = this.string();
       const value = this[tagTypeNames[type]]();
-      values[name] = { type: tagTypeNames[type], value: value };
+      values[name] = this.showTypes ? { type: tagTypeNames[type], value } : value;
     }
     return values;
   }
   end(){}
 }
 
-function parse(data: number[]){
+function parse(data: number[], showTypes: boolean = false){
   let arr = new Uint8Array(data);
   if(hasGzipHeader(arr)) arr = pako.inflate(arr);
-  const reader = new nbt(arr);
+  const reader = new nbt(arr, showTypes);
   const type = reader.byte();
   if(type !== tagTypes.compound) throw new Error('Top tag should be a compoud');
-  return {
-    name: reader.string(),
-    value: reader.compound(),
-  }
+  reader.string();
+  return reader.compound();
 }
 
 export default parse;
