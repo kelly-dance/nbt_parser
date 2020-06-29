@@ -1,170 +1,113 @@
 import pako from 'https://raw.githubusercontent.com/mcbobby123/deno-pako/master/index.js';
+// this project totally needs a better way to inflate gzipped stuff cause this ^ was something I real quick just did for this lol
 
-const tagTypes = {
-  'end': 0,
-  'byte': 1,
-  'short': 2,
-  'int': 3,
-  'long': 4,
-  'float': 5,
-  'double': 6,
-  'byteArray': 7,
-  'string': 8,
-  'list': 9,
-  'compound': 10,
-  'intArray': 11,
-  'longArray': 12
-};
-
-type test = string | number | test[];
-
-const tagTypeNames = Object.keys(tagTypes) as (keyof typeof tagTypes)[];
-type dataTypesStrings = 'Int8' | 'Uint8' | 'Int16' | 'Uint16' | 'Int32' | 'Uint32' | 'Float32' | 'Float64';
-type getDataTypesStrings = 'getInt8' | 'getUint8' | 'getInt16' | 'getUint16' | 'getInt32' | 'getUint32' | 'getFloat32' | 'getFloat64';
-
-type end = void;
-type byte = number;
-type ubyte = number;
-type short = number;
-type int = number;
-type float = number;
-type double = number;
-type long = [number, number];
-type byteArray = number[] | Uint8Array;
-type intArray = number[];
-type longArray = [number, number][];
-type list = {type: keyof typeof tagTypes, value: value} | value[];
-type compound = {[key: string]: ({type: keyof typeof tagTypes, value: value}) | value};
-type value = end | byte | ubyte | short | int | float | double | long | byteArray | intArray | longArray | string | list | compound;
-
-function hasGzipHeader(data: Uint8Array) {
-  return data[0] === 0x1f && data[1] === 0x8b;
+export enum TagTypes{ end, byte, short, int, long, float, double, byteArray, string, list, compound, intArray, longArray };
+type Pair<Tag, Type> = {type: Tag, value: Type};
+type List<Tag extends TagTypes> = Pair<TagTypes.list, TagTypeTypes[Tag][]> | {listType: Tag};
+export type TagTypeTypes = {
+  [TagTypes.end]: Pair<TagTypes.end, 0>;
+  [TagTypes.byte]: Pair<TagTypes.byte, number>;
+  [TagTypes.short]: Pair<TagTypes.short, number>;
+  [TagTypes.int]: Pair<TagTypes.int, number>;
+  [TagTypes.long]: Pair<TagTypes.long, bigint>;
+  [TagTypes.float]: Pair<TagTypes.float, number>;
+  [TagTypes.double]: Pair<TagTypes.double, number>;
+  [TagTypes.byteArray]: Pair<TagTypes.byteArray, number[]>;
+  [TagTypes.string]: Pair<TagTypes.string, string>;
+  [TagTypes.list]: List<TagTypes>;
+  [TagTypes.compound]: Pair<TagTypes.compound, {[key in string]?: TagTypeTypes[TagTypes]}>;
+  [TagTypes.intArray]: Pair<TagTypes.intArray, number[]>;
+  [TagTypes.longArray]: Pair<TagTypes.longArray, bigint[]>;
 }
 
-function decodeUTF8(array: Uint8Array) {
-  const codepoints = [];
-  for (let i = 0; i < array.length; i++) {
-    if ((array[i] & 0x80) === 0) {
-      codepoints.push(array[i] & 0x7F);
-    } else if (i+1 < array.length &&
-          (array[i]   & 0xE0) === 0xC0 &&
-          (array[i+1] & 0xC0) === 0x80) {
-      codepoints.push(
-        ((array[i]   & 0x1F) << 6) |
-        ( array[i+1] & 0x3F));
-    } else if (i+2 < array.length &&
-          (array[i]   & 0xF0) === 0xE0 &&
-          (array[i+1] & 0xC0) === 0x80 &&
-          (array[i+2] & 0xC0) === 0x80) {
-      codepoints.push(
-        ((array[i]   & 0x0F) << 12) |
-        ((array[i+1] & 0x3F) <<  6) |
-        ( array[i+2] & 0x3F));
-    } else if (i+3 < array.length &&
-          (array[i]   & 0xF8) === 0xF0 &&
-          (array[i+1] & 0xC0) === 0x80 &&
-          (array[i+2] & 0xC0) === 0x80 &&
-          (array[i+3] & 0xC0) === 0x80) {
-      codepoints.push(
-        ((array[i]   & 0x07) << 18) |
-        ((array[i+1] & 0x3F) << 12) |
-        ((array[i+2] & 0x3F) <<  6) |
-        ( array[i+3] & 0x3F));
+class NBTReader{
+  data: DataView;
+  offset: number = 0;
+
+  constructor(data: Uint8Array){
+    this.data = new DataView(data.buffer);
+  }
+
+  [TagTypes.end](){ return { value: 0, type: TagTypes.end } as TagTypeTypes[TagTypes.end]; }
+  [TagTypes.byte](){
+    const value = this.data.getInt8(this.offset);
+    this.offset +=1 ;
+    return { value, type: TagTypes.byte } as TagTypeTypes[TagTypes.byte];
+  }
+  [TagTypes.short](){
+    const value = this.data.getInt16(this.offset);
+    this.offset += 2;
+    return { value, type: TagTypes.short } as TagTypeTypes[TagTypes.short];
+  }
+  [TagTypes.int]() {
+    const value = this.data.getInt32(this.offset);
+    this.offset += 4;
+    return { value, type: TagTypes.int } as TagTypeTypes[TagTypes.int];
+  }
+  [TagTypes.long](){
+    const value = this.data.getBigInt64(this.offset);
+    this.offset += 4;
+    return { value, type: TagTypes.long } as TagTypeTypes[TagTypes.long];
+  }
+  [TagTypes.float](){
+    const value = this.data.getFloat32(this.offset);
+    this.offset += 4;
+    return { value, type: TagTypes.float } as TagTypeTypes[TagTypes.float];
+  }
+  [TagTypes.double](){
+    const value = this.data.getFloat64(this.offset);
+    this.offset += 8;
+    return { value, type: TagTypes.double } as TagTypeTypes[TagTypes.double];
+  }
+  [TagTypes.byteArray](){
+    const len = this[TagTypes.int]().value;
+    const value: number[] = [];
+    for(let i = 0; i < len; i++) value.push(this[TagTypes.byte]().value);
+    return { value, type: TagTypes.byteArray } as TagTypeTypes[TagTypes.byteArray];
+  }
+  [TagTypes.string](){
+    const len = this[TagTypes.short]().value;
+    const slice = this.data.buffer.slice(this.offset, this.offset + len);
+    this.offset += len;
+    return { value: (new TextDecoder('utf-8')).decode(slice), type: TagTypes.string } as TagTypeTypes[TagTypes.string];
+  }
+  [TagTypes.list](){
+    const type: TagTypes = this[TagTypes.byte]().value;
+    const len = this[TagTypes.int]().value;
+    const value: TagTypeTypes[TagTypes][] = [];
+    for(let i = 0; i < len; i++) value.push(this[type]()); 
+    return { value, type: TagTypes.list } as TagTypeTypes[TagTypes.list];
+  }
+  [TagTypes.compound](){
+    const tag: {[key: string]: TagTypeTypes[TagTypes]} = {};
+    while(true){
+      const type: TagTypes = this[TagTypes.byte]().value;
+      if(type === TagTypes.end) break;
+      tag[this[TagTypes.string]().value] = this[type]();
     }
+    return { value: tag, type: TagTypes.compound } as TagTypeTypes[TagTypes.compound];
   }
-  return String.fromCharCode(...codepoints);
+  [TagTypes.intArray](){
+    const len = this[TagTypes.int]().value;
+    const value: number[] = [];
+    for(let i = 0; i < len; i++) value.push(this[TagTypes.int]().value);
+    return { value, type: TagTypes.intArray } as TagTypeTypes[TagTypes.intArray];
+  }
+  [TagTypes.longArray](){
+    const len = this[TagTypes.int]().value;
+    const value: bigint[] = [];
+    for(let i = 0; i < len; i++) value.push(this[TagTypes.long]().value);
+    return { value, type: TagTypes.longArray } as TagTypeTypes[TagTypes.longArray];
+  }
 }
 
-class nbt{
-  offset: number;
-  dataView: DataView;
-  arrayView: Uint8Array;
-  showTypes: boolean;
-  constructor (buffer: Uint8Array, showTypes: boolean){
-    this.arrayView = buffer;
-    this.dataView = new DataView(buffer.buffer);
-    this.offset = 0;
-    this.showTypes = showTypes;
-  }
-  read(type: dataTypesStrings, size: number){
-    const val = this.dataView[('get' + type) as getDataTypesStrings](this.offset);
-    this.offset += size;
-    return val;
-  }
-  byte(): byte{
-    return this.read('Int8', 1);
-  }
-  ubyte(): ubyte{
-    return this.read('Uint8', 1);
-  }
-  short(): short{
-    return this.read('Int16', 2);
-  }
-  int(): int{
-    return this.read('Int32', 4);
-  }
-  float(): float{
-    return this.read('Float32', 4);
-  }
-  double(): double{
-    return this.read('Float64', 8);
-  }
-  long(): long{
-    return [this.int(), this.int()];
-  }
-  byteArray(): byteArray{
-    const length = this.int();
-    const bytes = [];
-    for (let i = 0; i < length; i++) bytes.push(this.byte());
-    return bytes;
-  }
-  intArray(): intArray{
-    const length = this.int();
-    const ints = [];
-    for (let i = 0; i < length; i++)  ints.push(this.int());
-    return ints;
-  }
-  longArray(): longArray {
-    const length = this.int();
-    const longs = [];
-    for (let i = 0; i < length; i++) longs.push(this.long());
-    return longs;
-  }
-  string(): string {
-    const length = this.short();
-    const slice = this.arrayView.slice(this.offset, this.offset + length);
-    this.offset += length;
-    return decodeUTF8(slice);
-  }
-  list(): list {
-    const type = this.byte();
-    const length = this.int();
-    const values = [];
-    for (let i = 0; i < length; i++) values.push(this[tagTypeNames[type]]());
-    return this.showTypes ? { type: tagTypeNames[type], value: values } : values;
-  }
-  compound(): compound {
-    let values: compound = {};
-    while (true) {
-      const type = this.byte();
-      if (type === tagTypes.end) break;
-      const name = this.string();
-      const value = this[tagTypeNames[type]]();
-      values[name] = this.showTypes ? { type: tagTypeNames[type], value } : value;
-    }
-    return values;
-  }
-  end(){}
-}
-
-function parse(data: number[], showTypes: boolean = false){
-  let arr = new Uint8Array(data);
-  if(hasGzipHeader(arr)) arr = pako.inflate(arr);
-  const reader = new nbt(arr, showTypes);
-  const type = reader.byte();
-  if(type !== tagTypes.compound) throw new Error('Top tag should be a compoud');
-  reader.string();
-  return reader.compound();
+function parse(data: Uint8Array){
+  if(data[0] === 0x1f && data[1] === 0x8b) data = pako.inflate(data);
+  const reader = new NBTReader(data);
+  const type: TagTypes = reader[TagTypes.byte]().value;
+  if(type !== TagTypes.compound) throw new Error('Top tag should be a compoud');
+  reader[TagTypes.string]();
+  return reader[TagTypes.compound]();
 }
 
 export default parse;
