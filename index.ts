@@ -1,8 +1,8 @@
 import { inflate } from "https://deno.land/x/compress@v0.3.3/mod.ts";
 
 export enum TagTypes{ end, byte, short, int, long, float, double, byteArray, string, list, compound, intArray, longArray };
-type Pair<Tag, Type> = {type: Tag, value: Type};
-type List<Tag extends TagTypes> = Pair<TagTypes.list, TagTypeTypes[Tag][]> | {listType: Tag};
+export type Pair<Tag, Type> = {type: Tag, value: Type};
+export type List<Tag extends TagTypes> = Pair<TagTypes.list, TagTypeTypes[Tag][]> & {listType: Tag};
 export type TagTypeTypes = {
   [TagTypes.end]: Pair<TagTypes.end, 0>;
   [TagTypes.byte]: Pair<TagTypes.byte, number>;
@@ -19,7 +19,7 @@ export type TagTypeTypes = {
   [TagTypes.longArray]: Pair<TagTypes.longArray, bigint[]>;
 }
 
-class NBTReader{
+export class NBTReader{
   data: DataView;
   offset: number = 0;
 
@@ -100,7 +100,7 @@ class NBTReader{
   }
 }
 
-function parse(data: Uint8Array){
+export const parse = (data: Uint8Array) => {
   if(data[0] === 0x1f && data[1] === 0x8b) data = inflate(data);
   const reader = new NBTReader(data);
   const type: TagTypes = reader[TagTypes.byte]().value;
@@ -109,4 +109,20 @@ function parse(data: Uint8Array){
   return reader[TagTypes.compound]();
 }
 
-export default parse;
+export type simplifiedTypes = {
+  [TagTypes.list]: simplifiedMatcher<Exclude<TagTypes, TagTypes.list>>[] //this is bad and not nessesarily true
+  [TagTypes.compound]: { [x: string]: simplifiedMatcher<TagTypes> }
+}
+export type simplifiedMatcher<T extends TagTypes> = T extends keyof simplifiedTypes ? simplifiedTypes[T] : TagTypeTypes[T]['value'];
+
+export const simplify = <T extends TagTypes>(tag: TagTypeTypes[T]): simplifiedMatcher<T> => {
+  if(tag.type === TagTypes.compound){
+    return Object.fromEntries(Object.entries(tag.value).filter(([_, value]) => !!value).map(([key, value]) => {
+      return [key, simplify(value as TagTypeTypes[TagTypes])]
+    })) as any as simplifiedMatcher<T>;
+  }else if(tag.type === TagTypes.list){
+    return (tag as TagTypeTypes[TagTypes.list]).value.map(simplify)  as any as simplifiedMatcher<T>;;
+  }else{
+    return tag.value as any as simplifiedMatcher<T>;;
+  }
+}
