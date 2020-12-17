@@ -1,5 +1,4 @@
-import pako from 'https://raw.githubusercontent.com/mcbobby123/deno-pako/master/index.js';
-// this project totally needs a better way to inflate gzipped stuff cause this ^ was something I real quick just did for this lol
+import { inflate } from "https://deno.land/x/compress@v0.3.3/mod.ts";
 
 export enum TagTypes{ end, byte, short, int, long, float, double, byteArray, string, list, compound, intArray, longArray };
 type Pair<Tag, Type> = {type: Tag, value: Type};
@@ -102,7 +101,7 @@ class NBTReader{
 }
 
 function parse(data: Uint8Array){
-  if(data[0] === 0x1f && data[1] === 0x8b) data = pako.inflate(data);
+  if(data[0] === 0x1f && data[1] === 0x8b) data = inflate(data);
   const reader = new NBTReader(data);
   const type: TagTypes = reader[TagTypes.byte]().value;
   if(type !== TagTypes.compound) throw new Error('Top tag should be a compoud');
