@@ -1,13 +1,15 @@
-# nbt-parser
+# nbt_parser
 
 Simple module used to parse nbt data in Deno.
 
 Based on https://github.com/sjmulder/nbt-js
 
+https://deno.land/x/nbt_parser
+
 ## How to use
 
 ```js
-import { parse, simplify,  } from 'https://raw.githubusercontent.com/mcbobby123/nbt-parser/master/index.ts';
+import { parse, simplify,  } from 'https://raw.githubusercontent.com/mcbobby123/nbt_parser/master/index.ts';
 
 const data: UInt8Array; // Some NBT data represented as a UInt8Array
 
@@ -21,7 +23,7 @@ const simpleNbt = simplify(nbt);
 ## Other
 
 ```js
-import { TagTypes, TagTypeTypes } from 'https://raw.githubusercontent.com/mcbobby123/nbt-parser/master/index.ts';
+import { TagTypes, TagTypeTypes } from 'https://raw.githubusercontent.com/mcbobby123/nbt_parser/master/index.ts';
 
 // TagTypes is an Enum containing the ids of each tag type
 
