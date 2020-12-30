@@ -2,7 +2,7 @@ import { inflate } from "https://deno.land/x/compress@v0.3.3/mod.ts";
 
 export enum Tag{ end, byte, short, int, long, float, double, byteArray, string, list, compound, intArray, longArray };
 export type Pair<Tg extends Tag, Type> = {type: Tg, value: Type};
-export type List<T extends Tag> = Pair<Tag.list, Types[T][]> & {listType: Tag};
+export type List<T extends Tag> = (Pair<Tag.list, Types[T][]> & { listType: T }) | (Pair<Tag.list, []> & { listType: Tag.end });
 export type Types = {
   [Tag.end]: Pair<Tag.end, 0>;
   [Tag.byte]: Pair<Tag.byte, number>;
@@ -75,7 +75,7 @@ export class NBTReader{
     const len = this[Tag.int]().value;
     const value: Types[Tag][] = [];
     for(let i = 0; i < len; i++) value.push(this[type]()); 
-    return { value, type: Tag.list } as Types[Tag.list];
+    return { value, type: Tag.list, listType: type } as Types[Tag.list];
   }
   [Tag.compound](){
     const tag: {[key: string]: Types[Tag]} = {};
@@ -109,20 +109,35 @@ export const parse = (data: Uint8Array) => {
   return reader[Tag.compound]();
 }
 
-export type simplifiedTypes = {
-  [Tag.list]: simplifiedMatcher<Exclude<Tag, Tag.list>>[] //this is bad and not nessesarily true
-  [Tag.compound]: { [x: string]: simplifiedMatcher<Tag> }
-}
-export type simplifiedMatcher<T extends Tag> = T extends keyof simplifiedTypes ? simplifiedTypes[T] : Types[T]['value'];
+export type SimplifiedType<T extends Types[Tag]> =
+  T extends Types[Tag.list]
+    ? T["value"] extends (infer R)[] ? R extends Types[Tag] ? SimplifiedType<R>[] : never : never
+  : T extends Types[Tag.compound]
+    ? { [K in keyof T['value']]: SimplifiedType<T['value'][K] extends Types[Tag] ? T['value'][K] : never> } 
+    : T['value'];
 
-export const simplify = <T extends Tag>(tag: Types[T]): simplifiedMatcher<T> => {
-  if(tag.type === Tag.compound){
+export const simplify = <T extends Types[Tag]>(tag: T): SimplifiedType<T> => {
+  if(tag.type === Tag.compound)
     return Object.fromEntries(Object.entries(tag.value).filter(([_, value]) => !!value).map(([key, value]) => {
       return [key, simplify(value as Types[Tag])]
-    })) as any as simplifiedMatcher<T>;
-  }else if(tag.type === Tag.list){
-    return (tag as Types[Tag.list]).value.map(simplify)  as any as simplifiedMatcher<T>;;
-  }else{
-    return tag.value as any as simplifiedMatcher<T>;;
-  }
+    })) as any as SimplifiedType<T>;
+  else if(tag.type === Tag.list)
+    return (tag as any).value.map((v: any) => simplify(v)) as any as SimplifiedType<T>;
+  else
+    return tag.value as any as SimplifiedType<T>;
 }
+
+export type Constant<T extends Exclude<Tag, Tag.compound | Tag.list>, V> = V extends Types[T]['value'] ? [T, V] : never;
+export type Blueprint = { [x: string]: Blueprint } | Tag | Blueprint[] | [Tag, Types[Tag]['value']] | undefined;
+export type Create<T extends Blueprint> =
+  T extends [infer A, infer B]
+    ? { type: A, value: B }
+  : T extends Blueprint[]
+    ? { listType: T extends Tag ? T : T extends [any] ? Tag.list : Tag.compound, type: Tag.list, value: Create<T extends (infer I)[] ? I extends Blueprint ? I : never : never>[] }
+  : T extends { [x: string]: Blueprint }
+    ? { type: Tag.compound, value: { [K in keyof T]: Create<T[K]> }}
+  : T extends Tag
+    ? Types[T]
+  : T extends undefined
+    ? undefined
+    : never
