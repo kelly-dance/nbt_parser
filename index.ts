@@ -1,22 +1,22 @@
 import { inflate } from "https://deno.land/x/compress@v0.3.3/mod.ts";
 
-export enum TagTypes{ end, byte, short, int, long, float, double, byteArray, string, list, compound, intArray, longArray };
-export type Pair<Tag, Type> = {type: Tag, value: Type};
-export type List<Tag extends TagTypes> = Pair<TagTypes.list, TagTypeTypes[Tag][]> & {listType: Tag};
-export type TagTypeTypes = {
-  [TagTypes.end]: Pair<TagTypes.end, 0>;
-  [TagTypes.byte]: Pair<TagTypes.byte, number>;
-  [TagTypes.short]: Pair<TagTypes.short, number>;
-  [TagTypes.int]: Pair<TagTypes.int, number>;
-  [TagTypes.long]: Pair<TagTypes.long, bigint>;
-  [TagTypes.float]: Pair<TagTypes.float, number>;
-  [TagTypes.double]: Pair<TagTypes.double, number>;
-  [TagTypes.byteArray]: Pair<TagTypes.byteArray, number[]>;
-  [TagTypes.string]: Pair<TagTypes.string, string>;
-  [TagTypes.list]: List<TagTypes>;
-  [TagTypes.compound]: Pair<TagTypes.compound, {[key in string]?: TagTypeTypes[TagTypes]}>;
-  [TagTypes.intArray]: Pair<TagTypes.intArray, number[]>;
-  [TagTypes.longArray]: Pair<TagTypes.longArray, bigint[]>;
+export enum Tag{ end, byte, short, int, long, float, double, byteArray, string, list, compound, intArray, longArray };
+export type Pair<Tg extends Tag, Type> = {type: Tg, value: Type};
+export type List<T extends Tag> = Pair<Tag.list, Types[T][]> & {listType: Tag};
+export type Types = {
+  [Tag.end]: Pair<Tag.end, 0>;
+  [Tag.byte]: Pair<Tag.byte, number>;
+  [Tag.short]: Pair<Tag.short, number>;
+  [Tag.int]: Pair<Tag.int, number>;
+  [Tag.long]: Pair<Tag.long, bigint>;
+  [Tag.float]: Pair<Tag.float, number>;
+  [Tag.double]: Pair<Tag.double, number>;
+  [Tag.byteArray]: Pair<Tag.byteArray, number[]>;
+  [Tag.string]: Pair<Tag.string, string>;
+  [Tag.list]: List<Tag>;
+  [Tag.compound]: Pair<Tag.compound, {[key in string]?: Types[Tag]}>;
+  [Tag.intArray]: Pair<Tag.intArray, number[]>;
+  [Tag.longArray]: Pair<Tag.longArray, bigint[]>;
 }
 
 export class NBTReader{
@@ -27,101 +27,101 @@ export class NBTReader{
     this.data = new DataView(data.buffer);
   }
 
-  [TagTypes.end](){ return { value: 0, type: TagTypes.end } as TagTypeTypes[TagTypes.end]; }
-  [TagTypes.byte](){
+  [Tag.end](){ return { value: 0, type: Tag.end } as Types[Tag.end]; }
+  [Tag.byte](){
     const value = this.data.getInt8(this.offset);
     this.offset +=1 ;
-    return { value, type: TagTypes.byte } as TagTypeTypes[TagTypes.byte];
+    return { value, type: Tag.byte } as Types[Tag.byte];
   }
-  [TagTypes.short](){
+  [Tag.short](){
     const value = this.data.getInt16(this.offset);
     this.offset += 2;
-    return { value, type: TagTypes.short } as TagTypeTypes[TagTypes.short];
+    return { value, type: Tag.short } as Types[Tag.short];
   }
-  [TagTypes.int]() {
+  [Tag.int]() {
     const value = this.data.getInt32(this.offset);
     this.offset += 4;
-    return { value, type: TagTypes.int } as TagTypeTypes[TagTypes.int];
+    return { value, type: Tag.int } as Types[Tag.int];
   }
-  [TagTypes.long](){
+  [Tag.long](){
     const value = this.data.getBigInt64(this.offset);
     this.offset += 4;
-    return { value, type: TagTypes.long } as TagTypeTypes[TagTypes.long];
+    return { value, type: Tag.long } as Types[Tag.long];
   }
-  [TagTypes.float](){
+  [Tag.float](){
     const value = this.data.getFloat32(this.offset);
     this.offset += 4;
-    return { value, type: TagTypes.float } as TagTypeTypes[TagTypes.float];
+    return { value, type: Tag.float } as Types[Tag.float];
   }
-  [TagTypes.double](){
+  [Tag.double](){
     const value = this.data.getFloat64(this.offset);
     this.offset += 8;
-    return { value, type: TagTypes.double } as TagTypeTypes[TagTypes.double];
+    return { value, type: Tag.double } as Types[Tag.double];
   }
-  [TagTypes.byteArray](){
-    const len = this[TagTypes.int]().value;
+  [Tag.byteArray](){
+    const len = this[Tag.int]().value;
     const value: number[] = [];
-    for(let i = 0; i < len; i++) value.push(this[TagTypes.byte]().value);
-    return { value, type: TagTypes.byteArray } as TagTypeTypes[TagTypes.byteArray];
+    for(let i = 0; i < len; i++) value.push(this[Tag.byte]().value);
+    return { value, type: Tag.byteArray } as Types[Tag.byteArray];
   }
-  [TagTypes.string](){
-    const len = this[TagTypes.short]().value;
+  [Tag.string](){
+    const len = this[Tag.short]().value;
     const slice = this.data.buffer.slice(this.offset, this.offset + len);
     this.offset += len;
-    return { value: (new TextDecoder('utf-8')).decode(slice), type: TagTypes.string } as TagTypeTypes[TagTypes.string];
+    return { value: (new TextDecoder('utf-8')).decode(slice), type: Tag.string } as Types[Tag.string];
   }
-  [TagTypes.list](){
-    const type: TagTypes = this[TagTypes.byte]().value;
-    const len = this[TagTypes.int]().value;
-    const value: TagTypeTypes[TagTypes][] = [];
+  [Tag.list](){
+    const type: Tag = this[Tag.byte]().value;
+    const len = this[Tag.int]().value;
+    const value: Types[Tag][] = [];
     for(let i = 0; i < len; i++) value.push(this[type]()); 
-    return { value, type: TagTypes.list } as TagTypeTypes[TagTypes.list];
+    return { value, type: Tag.list } as Types[Tag.list];
   }
-  [TagTypes.compound](){
-    const tag: {[key: string]: TagTypeTypes[TagTypes]} = {};
+  [Tag.compound](){
+    const tag: {[key: string]: Types[Tag]} = {};
     while(true){
-      const type: TagTypes = this[TagTypes.byte]().value;
-      if(type === TagTypes.end) break;
-      tag[this[TagTypes.string]().value] = this[type]();
+      const type: Tag = this[Tag.byte]().value;
+      if(type === Tag.end) break;
+      tag[this[Tag.string]().value] = this[type]();
     }
-    return { value: tag, type: TagTypes.compound } as TagTypeTypes[TagTypes.compound];
+    return { value: tag, type: Tag.compound } as Types[Tag.compound];
   }
-  [TagTypes.intArray](){
-    const len = this[TagTypes.int]().value;
+  [Tag.intArray](){
+    const len = this[Tag.int]().value;
     const value: number[] = [];
-    for(let i = 0; i < len; i++) value.push(this[TagTypes.int]().value);
-    return { value, type: TagTypes.intArray } as TagTypeTypes[TagTypes.intArray];
+    for(let i = 0; i < len; i++) value.push(this[Tag.int]().value);
+    return { value, type: Tag.intArray } as Types[Tag.intArray];
   }
-  [TagTypes.longArray](){
-    const len = this[TagTypes.int]().value;
+  [Tag.longArray](){
+    const len = this[Tag.int]().value;
     const value: bigint[] = [];
-    for(let i = 0; i < len; i++) value.push(this[TagTypes.long]().value);
-    return { value, type: TagTypes.longArray } as TagTypeTypes[TagTypes.longArray];
+    for(let i = 0; i < len; i++) value.push(this[Tag.long]().value);
+    return { value, type: Tag.longArray } as Types[Tag.longArray];
   }
 }
 
 export const parse = (data: Uint8Array) => {
   if(data[0] === 0x1f && data[1] === 0x8b) data = inflate(data);
   const reader = new NBTReader(data);
-  const type: TagTypes = reader[TagTypes.byte]().value;
-  if(type !== TagTypes.compound) throw new Error('Top tag should be a compoud');
-  reader[TagTypes.string]();
-  return reader[TagTypes.compound]();
+  const type: Tag = reader[Tag.byte]().value;
+  if(type !== Tag.compound) throw new Error('Top tag should be a compoud');
+  reader[Tag.string]();
+  return reader[Tag.compound]();
 }
 
 export type simplifiedTypes = {
-  [TagTypes.list]: simplifiedMatcher<Exclude<TagTypes, TagTypes.list>>[] //this is bad and not nessesarily true
-  [TagTypes.compound]: { [x: string]: simplifiedMatcher<TagTypes> }
+  [Tag.list]: simplifiedMatcher<Exclude<Tag, Tag.list>>[] //this is bad and not nessesarily true
+  [Tag.compound]: { [x: string]: simplifiedMatcher<Tag> }
 }
-export type simplifiedMatcher<T extends TagTypes> = T extends keyof simplifiedTypes ? simplifiedTypes[T] : TagTypeTypes[T]['value'];
+export type simplifiedMatcher<T extends Tag> = T extends keyof simplifiedTypes ? simplifiedTypes[T] : Types[T]['value'];
 
-export const simplify = <T extends TagTypes>(tag: TagTypeTypes[T]): simplifiedMatcher<T> => {
-  if(tag.type === TagTypes.compound){
+export const simplify = <T extends Tag>(tag: Types[T]): simplifiedMatcher<T> => {
+  if(tag.type === Tag.compound){
     return Object.fromEntries(Object.entries(tag.value).filter(([_, value]) => !!value).map(([key, value]) => {
-      return [key, simplify(value as TagTypeTypes[TagTypes])]
+      return [key, simplify(value as Types[Tag])]
     })) as any as simplifiedMatcher<T>;
-  }else if(tag.type === TagTypes.list){
-    return (tag as TagTypeTypes[TagTypes.list]).value.map(simplify)  as any as simplifiedMatcher<T>;;
+  }else if(tag.type === Tag.list){
+    return (tag as Types[Tag.list]).value.map(simplify)  as any as simplifiedMatcher<T>;;
   }else{
     return tag.value as any as simplifiedMatcher<T>;;
   }
