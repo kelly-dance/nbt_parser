@@ -8,7 +8,7 @@ https://deno.land/x/nbt_parser
 
 ## How to use
 
-```js
+```ts
 import { parse, simplify } from 'https://raw.githubusercontent.com/mcbobby123/nbt_parser/master/index.ts';
 
 const data: UInt8Array; // Some NBT data represented as a UInt8Array
@@ -22,7 +22,7 @@ const simpleNbt = simplify(nbt);
 
 ## Typing
 
-```js
+```ts
 import { Tag, Types, Create, Constant, SimplifiedType } from 'https://raw.githubusercontent.com/mcbobby123/nbt_parser/master/index.ts';
 
 // Tag is an Enum containing the ids of each tag type
