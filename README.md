@@ -25,14 +25,14 @@ const simpleNbt = simplify(nbt);
 ```js
 import { Tag, Types } from 'https://raw.githubusercontent.com/mcbobby123/nbt_parser/master/index.ts';
 
-// TagTypes is an Enum containing the ids of each tag type
+// Tag is an Enum containing the ids of each tag type
 
 Tag.byte  // 1
 Tag.short // 2
 Tag.int   // 3
 // ... etc
 
-// TagTypeTypes maps the ids to their respective types
+// Types maps the ids to their respective types
 
 type IntTag = Types[Tag.int]; // { type: 3, value: number }
 ```
