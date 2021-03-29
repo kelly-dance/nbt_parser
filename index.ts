@@ -14,7 +14,7 @@ export type Types = {
   [Tag.byteArray]: Pair<Tag.byteArray, number[]>;
   [Tag.string]: Pair<Tag.string, string>;
   [Tag.list]: List<Tag>;
-  [Tag.compound]: Pair<Tag.compound, {[key in string]?: Types[Tag]}>;
+  [Tag.compound]: Pair<Tag.compound, {[key: string]: undefined | Types[Tag]}>;
   [Tag.intArray]: Pair<Tag.intArray, number[]>;
   [Tag.longArray]: Pair<Tag.longArray, bigint[]>;
 }
@@ -27,78 +27,89 @@ class NBTReader{
     this.data = new DataView(data.buffer);
   }
 
-  [Tag.end](){ return { value: 0, type: Tag.end } as Types[Tag.end]; }
-  [Tag.byte](){
+  [Tag.end](): Types[Tag.end] {
+    return { value: 0, type: Tag.end };
+  }
+  [Tag.byte](): Types[Tag.byte] {
     const value = this.data.getInt8(this.offset);
     this.offset +=1 ;
-    return { value, type: Tag.byte } as Types[Tag.byte];
+    return { value, type: Tag.byte };
   }
-  [Tag.short](){
+  [Tag.short](): Types[Tag.short] {
     const value = this.data.getInt16(this.offset);
     this.offset += 2;
-    return { value, type: Tag.short } as Types[Tag.short];
+    return { value, type: Tag.short };
   }
-  [Tag.int]() {
+  [Tag.int](): Types[Tag.int] {
     const value = this.data.getInt32(this.offset);
     this.offset += 4;
-    return { value, type: Tag.int } as Types[Tag.int];
+    return { value, type: Tag.int };
   }
-  [Tag.long](){
+  [Tag.long](): Types[Tag.long] {
     const value = this.data.getBigInt64(this.offset);
-    this.offset += 4;
-    return { value, type: Tag.long } as Types[Tag.long];
+    this.offset += 8;
+    return { value, type: Tag.long };
   }
-  [Tag.float](){
+  [Tag.float](): Types[Tag.float] {
     const value = this.data.getFloat32(this.offset);
     this.offset += 4;
-    return { value, type: Tag.float } as Types[Tag.float];
+    return { value, type: Tag.float };
   }
-  [Tag.double](){
+  [Tag.double](): Types[Tag.double] {
     const value = this.data.getFloat64(this.offset);
     this.offset += 8;
-    return { value, type: Tag.double } as Types[Tag.double];
+    return { value, type: Tag.double };
   }
-  [Tag.byteArray](){
+  [Tag.byteArray](): Types[Tag.byteArray] {
     const len = this[Tag.int]().value;
     const value: number[] = [];
     for(let i = 0; i < len; i++) value.push(this[Tag.byte]().value);
-    return { value, type: Tag.byteArray } as Types[Tag.byteArray];
+    return { value, type: Tag.byteArray };
   }
-  [Tag.string](){
+  [Tag.string](): Types[Tag.string] {
     const len = this[Tag.short]().value;
     const slice = this.data.buffer.slice(this.offset, this.offset + len);
     this.offset += len;
-    return { value: (new TextDecoder('utf-8')).decode(slice), type: Tag.string } as Types[Tag.string];
+    return { value: (new TextDecoder('utf-8')).decode(slice), type: Tag.string };
   }
-  [Tag.list](){
+  [Tag.list](): Types[Tag.list] {
     const type: Tag = this[Tag.byte]().value;
+    if(!isValidTagType(type)) throw new Error(`Invalid Tag Type! type: ${type}`);
     const len = this[Tag.int]().value;
     const value: Types[Tag][] = [];
-    for(let i = 0; i < len; i++) value.push(this[type]()); 
+    for(let i = 0; i < len; i++) {
+      const cur = this[type]();
+      value.push(cur);
+    }
     return { value, type: Tag.list, listType: type } as Types[Tag.list];
   }
-  [Tag.compound](){
+  [Tag.compound](): Types[Tag.compound] {
     const tag: {[key: string]: Types[Tag]} = {};
     while(true){
       const type: Tag = this[Tag.byte]().value;
+      if(!isValidTagType(type)) throw new Error(`Invalid Tag Type! type: ${type}`);
       if(type === Tag.end) break;
-      tag[this[Tag.string]().value] = this[type]();
+      const key = this[Tag.string]().value;
+      const value = this[type]();
+      tag[key] = value;
     }
-    return { value: tag, type: Tag.compound } as Types[Tag.compound];
+    return { value: tag, type: Tag.compound };
   }
-  [Tag.intArray](){
+  [Tag.intArray](): Types[Tag.intArray] {
     const len = this[Tag.int]().value;
     const value: number[] = [];
     for(let i = 0; i < len; i++) value.push(this[Tag.int]().value);
-    return { value, type: Tag.intArray } as Types[Tag.intArray];
+    return { value, type: Tag.intArray };
   }
-  [Tag.longArray](){
+  [Tag.longArray](): Types[Tag.longArray] {
     const len = this[Tag.int]().value;
     const value: bigint[] = [];
     for(let i = 0; i < len; i++) value.push(this[Tag.long]().value);
-    return { value, type: Tag.longArray } as Types[Tag.longArray];
+    return { value, type: Tag.longArray };
   }
 }
+
+export const isValidTagType = (tag: number): tag is Tag => tag in Tag;
 
 export const parse = (data: Uint8Array) => {
   if(data[0] === 0x1f && data[1] === 0x8b) data = inflate(data);
