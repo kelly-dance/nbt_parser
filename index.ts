@@ -1,7 +1,7 @@
 import { inflate } from "https://deno.land/x/compress@v0.3.3/mod.ts";
 
-export enum Tag{ end, byte, short, int, long, float, double, byteArray, string, list, compound, intArray, longArray };
-type Pair<Tg extends Tag, Type> = {type: Tg, value: Type};
+export enum Tag { end, byte, short, int, long, float, double, byteArray, string, list, compound, intArray, longArray };
+type Pair<Tg extends Tag, Type> = { type: Tg, value: Type };
 type List<T extends Tag> = T extends Tag.end ? Pair<Tag.list, []> & { listType: Tag.end } : (Pair<Tag.list, Types[T][]> & { listType: T }) | List<Tag.end>;
 export type Types = {
   [Tag.end]: Pair<Tag.end, 0>;
@@ -19,7 +19,7 @@ export type Types = {
   [Tag.longArray]: Pair<Tag.longArray, bigint[]>;
 }
 
-class NBTReader{
+class NBTReader {
   data: DataView;
   offset: number = 0;
 
@@ -120,37 +120,13 @@ export const parse = (data: Uint8Array) => {
   return reader[Tag.compound]();
 }
 
-export type SimplifiedType<T extends Types[Tag]> =
-  T extends Types[Tag.list]
-    ? T["value"] extends (infer R)[] ? R extends Types[Tag] ? SimplifiedType<R>[] : never : never
-  : T extends Types[Tag.compound]
-    ? { [K in keyof T['value']]: SimplifiedType<T['value'][K] extends Types[Tag] ? T['value'][K] : never> } 
-    : T['value'];
-
-export const simplify = <T extends Types[Tag]>(tag: T): SimplifiedType<T> => {
+export const simplify = <T extends Types[Tag]>(tag: T): any => {
   if(tag.type === Tag.compound)
     return Object.fromEntries(Object.entries(tag.value).filter(([_, value]) => !!value).map(([key, value]) => {
       return [key, simplify(value as Types[Tag])]
-    })) as any as SimplifiedType<T>;
+    }));
   else if(tag.type === Tag.list)
-    return (tag as any).value.map((v: any) => simplify(v)) as any as SimplifiedType<T>;
+    return (tag as any).value.map((v: any) => simplify(v));
   else
-    return tag.value as any as SimplifiedType<T>;
+    return tag.value;
 }
-
-type CPair<T extends Exclude<Tag, Tag.list>, V> = V extends Types[T]['value'] ? { type: T, value: V } : never;
-type CList<T extends Tag, V> = T extends Tag.end ? List<Tag.end> : V extends Types[T] ? { type: Tag.list, listType: T, value: V[] } | List<Tag.end> : never;
-export type Constant<T extends Exclude<Tag, Tag.compound | Tag.list>, V> = V extends Types[T]['value'] ? [T, V] : never;
-export type Blueprint = { [x: string]: Blueprint } | Tag | Blueprint[] | [Exclude<Tag, Tag.list>, Types[Tag]['value']] | undefined;
-export type Create<T extends Blueprint> =
-  T extends [infer A, infer B]
-    ? A extends Exclude<Tag, Tag.list> ? CPair<A, B> : never
-  : T extends Blueprint[]
-    ? CList<T extends (infer A)[] ? A extends Tag ? A : A extends [infer B, any] ? B : Tag.list : Tag.compound, Create<T extends (infer I)[] ? I extends Blueprint ? I : never : never>>
-  : T extends { [x: string]: Blueprint }
-    ? CPair<Tag.compound, { [K in keyof T]: Create<T[K]> }>
-  : T extends Tag
-    ? Types[T]
-  : T extends undefined
-    ? undefined
-    : never
